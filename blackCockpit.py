@@ -32,7 +32,7 @@ message_commands = {
     'GET_SPEED': 0xF40D,
     'GET_RPM': 0xF40C,
     'GET_KM_LEFT': 0x2294,
-    'GET_FUEL_LEFT': 0x2206,
+    'GET_FUEL_LEFT': 0x229A,
     'GET_TIME': 0x2216,
     'GET_DISTANCE': 0x2203,
     'GET_FUEL_CONSUMPTION': 0x2299
@@ -90,33 +90,30 @@ class CanListener(can.Listener):
         if message.arbitration_id == 0x77E and message_command == message_commands['GET_KM_LEFT']:
             self.km_left_states.current = message.data[5] | message.data[4] << 8
             if self.km_left_states.last_is_not_now():
-                self.dashboard.kmLeftLabel.text = str(self.km_left_states.current)
+                self.dashboard.km_left_label.text = str(self.km_left_states.current)
                 self.km_left_states.last = self.km_left_states.current
 
         if message.arbitration_id == 0x77E and message_command == message_commands['GET_COOLANT_TEMPERATURE']:
             self.coolant_temperature_states.current = message.data[4]
             if self.coolant_temperature_states.last_is_not_now():
-                # 0 = 50C
-                # 256 = 130C
-                # 1C = 3.2
-                temperature = self.coolant_temperature_states.current - 81
+                temperature = (self.coolant_temperature_states.current - 63)/2*1.5
                 if temperature > 50:
-                    self.dashboard.coolantBar.height = (temperature-50)*3.2
+                    self.dashboard.coolant_bar.height = (temperature-50)*3.2
                     self.coolant_temperature_states.last = self.coolant_temperature_states.current
 
         if message.arbitration_id == 0x77E and message_command == message_commands['GET_FUEL_LEFT']:
-            self.fuel_left_states.current = message.data[4]
+            self.fuel_left_states.current = message.data[5] | message.data[4] << 8
             if self.fuel_left_states.last_is_not_now():
                 # 55L = 256
                 # 0L = 0
                 # 1L = 4.65 
-                self.dashboard.fuelBar.height = self.fuel_left_states.current * 4.65
+                self.dashboard.fuel_bar.height = self.fuel_left_states.current/8 * 4.65
                 self.fuel_left_states.last = self.fuel_left_states.current
 
         if message.arbitration_id == 0x77E and message_command == message_commands['GET_OIL_TEMPERATURE']:
             self.oil_temperature_states.current = message.data[4]
             if self.oil_temperature_states.last_is_not_now():
-                self.dashboard.oilLabel.text = str(self.oil_temperature_states.current - 58)
+                self.dashboard.oil_label.text = str(self.oil_temperature_states.current - 58)
                 self.oil_temperature_states.last = self.oil_temperature_states.current
 
         if message.arbitration_id == 0x77E and message_command == message_commands['GET_TIME']:
@@ -128,26 +125,26 @@ class CanListener(can.Listener):
         if message.arbitration_id == 0x77E and message_command == message_commands['GET_OUTDOOR_TEMPERATURE']:
             self.outdoor_temperature_states.current = float(message.data[4])
             if self.outdoor_temperature_states.last_is_not_now():
-                self.dashboard.outDoorTemperatureLabel.text = str((self.outdoor_temperature_states.current - 100) / 2)
+                self.dashboard.outdoor_temperature_label.text = str((self.outdoor_temperature_states.current - 100) / 2)
                 self.outdoor_temperature_states.last = self.outdoor_temperature_states.current
 
         if message.arbitration_id == 0x77E and message_command == message_commands['GET_DISTANCE']:
             self.distance_states.current = message.data[5] | message.data[4] << 8
             if self.distance_states.last_is_not_now():
-                self.dashboard.distanceLabel.text = self.distance_states.current * 10
+                self.dashboard.distance_label.text = str(self.distance_states.current * 10)
                 self.distance_states.last = self.distance_states.current
 
         if message.arbitration_id == 0x77E and message_command == message_commands['GET_FUEL_CONSUMPTION']:
             self.fuel_consumption_states.current = float(message.data[5] | message.data[4] << 8)
             if self.fuel_consumption_states.last_is_not_now():
-                self.dashboard.fuelConsumptionLabel.text = self.fuel_consumption_states.current / 10
+                self.dashboard.fuel_consumption_label.text = str(self.fuel_consumption_states.current / 10)
                 self.fuel_consumption_states.last = self.fuel_consumption_states.current
 
         if message.arbitration_id == 0x77E and message_command == message_commands['GET_DOORS_COMMAND']:
             self.doors_states.current = message.data[4]
             if self.doors_states.last_is_not_now():
                 self.doors_states.last = self.doors_states.current
-                self.dashboard.car.doorsStates = message.data[4]
+                self.dashboard.car.doors_states = message.data[4]
 
                 # all doors closed -> minimize car
                 if self.doors_states.current == 0x55:
@@ -173,13 +170,13 @@ class Dashboard(FloatLayout):
         self.add_widget(self.rpm)
         self.rpm.value = 1
 
-        # Bottom Bar
+        # Speedometer
+        self.speedometer = Label(text='0', font_size=80, font_name='hemi_head_bd_it.ttf', pos=(274,194))
+        self.rpm.add_widget(self.speedometer)
+
+        # BOTTOM BAR
         self.bottom_bar = Image(source='bottomBar.png', pos=(0, -209))
         self.add_widget(self.bottom_bar)
-
-        # Speedometer
-        self.speedometer = Label(text='0', font_size=80, font_name='hemi_head_bd_it.ttf', pos=(0, 0))
-        self.add_widget(self.speedometer)
 
         # KM LEFT
         self.km_left_label = Label(text='000', font_name='Avenir.ttc', halign="right", text_size=self.size,
@@ -210,23 +207,21 @@ class Dashboard(FloatLayout):
         self.add_widget(self.distance_label)
 
         # FUEL CONSUMPTION
-        self.fuel_cons_label = Label(text='00.0', font_name='Avenir.ttc', halign="right", text_size=self.size,
-                                     font_size=32, pos=(-285, 234))
-        self.add_widget(self.fuel_cons_label)
+        self.fuel_consumption_label = Label(text='00.0', font_name='Avenir.ttc', halign="right", text_size=self.size,
+                                     font_size=32, pos=(-290, 234))
+        self.add_widget(self.fuel_consumption_label)
 
         # COOLANT TEMPERATURE
         self.coolant_bar = StencilView(size_hint=(None, None), size=(94, 256), pos=(15, 112))
         self.coolant_image = Image(source='coolantScaleFull.png', size=(94, 256), pos=(15, 112))
         self.coolant_bar.add_widget(self.coolant_image)
         self.add_widget(self.coolant_bar)
-        self.coolant_bar.height = 160
 
         # FUEL LEFT
         self.fuel_bar = StencilView(size_hint=(None, None), size=(94, 256), pos=(686, 112))
         self.fuel_image = Image(source='fuelScaleFull.png', size=(94, 256), pos=(686, 112))
         self.fuel_bar.add_widget(self.fuel_image)
         self.add_widget(self.fuel_bar)
-        self.fuel_bar.height = 220
 
         # CAR DOORS
         self.car = Car(pos=(257, 84))
@@ -288,7 +283,7 @@ class Car(Scatter):
         self.add_widget(self.left_door_opened)
         self.add_widget(self.right_door_opened)
 
-        self.bind(doorsStates=self._update)
+        self.bind(doors_states=self._update)
 
     def _update(self):
         driver_door_states = self.doors_states & 1
@@ -382,12 +377,12 @@ class Gauge(Scatter):
         self.bind(size=self._update)
         self.bind(value=self._turn)
 
-    def _update(self):
+    def _update(self, *args):
         self._gauge.pos = self.pos
         self._needle.pos = (self.x, self.y)
         self._needle.center = self._gauge.center
 
-    def _turn(self):
+    def _turn(self, *args):
         self._needle.center_x = self._gauge.center_x
         self._needle.center_y = self._gauge.center_y
         self._needle.rotation = 112-(0.028*self.value)  # 1 rpm = 0.028 gr
@@ -536,7 +531,7 @@ class RequestsLoop(Thread):
         while True:
             for command in self.canCommands:
                 bus.send(command)
-                time.sleep(0.005)
+                time.sleep(0.01)
 
 
 class BoxApp(App):

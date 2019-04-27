@@ -5,6 +5,7 @@ import os
 import sys
 from threading import Thread
 import time
+import datetime
 
 
 from kivy.app import App
@@ -24,13 +25,13 @@ os.environ['KIVY_WINDOW'] = 'egl_rpi'
 
 
 message_commands = {
+    'GET_RPM': 0xF40C,
+    'GET_SPEED': 0xF40D,
     'GET_DOORS_COMMAND': 0x220D,
     'GET_OIL_TEMPERATURE': 0x202F,
     'GET_OUTDOOR_TEMPERATURE': 0x1014,
     'GET_INDOOR_TEMPERATURE': 0x2613,
     'GET_COOLANT_TEMPERATURE': 0xF405,
-    'GET_SPEED': 0xF40D,
-    'GET_RPM': 0xF40C,
     'GET_KM_LEFT': 0x2294,
     'GET_FUEL_LEFT': 0x229A,
     'GET_TIME': 0x2216,
@@ -69,23 +70,17 @@ class CanListener(can.Listener):
     def on_message_received(self, message):
         message_command = message.data[3] | message.data[2] << 8
 
-        if message.arbitration_id == 0x77E and message_command == message_commands['GET_SPEED']:
-            self.speed_states.current = message.data[4]
-            if self.speed_states.last_is_not_now():
-                self.dashboard.speedometer.text = str(self.speed_states.current)
-                self.speed_states.last = self.speed_states.current
-
         if message.arbitration_id == 0x77E and message_command == message_commands['GET_RPM']:
             self.rpm_states.current = message.data[5] | message.data[4] << 8
             if self.rpm_states.last_is_not_now():
                 self.dashboard.rpm.value = self.rpm_states.current / 4
                 self.rpm_states.last = self.rpm_states.current
 
-        if message.arbitration_id == 0x35B:
-            self.rpm_states.current = message.data[2] | message.data[1] << 8
-            if self.rpm_states.last_is_not_now():
-                self.dashboard.rpm.value = self.rpm_states.current / 4
-                self.rpm_states.last = self.rpm_states.current
+        if message.arbitration_id == 0x77E and message_command == message_commands['GET_SPEED']:
+            self.speed_states.current = message.data[4]
+            if self.speed_states.last_is_not_now():
+                self.dashboard.speedometer.text = str(self.speed_states.current)
+                self.speed_states.last = self.speed_states.current
 
         if message.arbitration_id == 0x77E and message_command == message_commands['GET_KM_LEFT']:
             self.km_left_states.current = message.data[5] | message.data[4] << 8
@@ -135,7 +130,7 @@ class CanListener(can.Listener):
                 self.distance_states.last = self.distance_states.current
 
         if message.arbitration_id == 0x77E and message_command == message_commands['GET_FUEL_CONSUMPTION']:
-            self.fuel_consumption_states.current = float(message.data[5] | message.data[4] << 8)
+            self.fuel_consumption_states.current = message.data[5] | message.data[4] << 8
             if self.fuel_consumption_states.last_is_not_now():
                 self.dashboard.fuel_consumption_label.text = str(self.fuel_consumption_states.current / 10)
                 self.fuel_consumption_states.last = self.fuel_consumption_states.current
@@ -216,12 +211,14 @@ class Dashboard(FloatLayout):
         self.coolant_image = Image(source='coolantScaleFull.png', size=(94, 256), pos=(15, 112))
         self.coolant_bar.add_widget(self.coolant_image)
         self.add_widget(self.coolant_bar)
+        self.coolant_bar.height = 0
 
         # FUEL LEFT
         self.fuel_bar = StencilView(size_hint=(None, None), size=(94, 256), pos=(686, 112))
         self.fuel_image = Image(source='fuelScaleFull.png', size=(94, 256), pos=(686, 112))
         self.fuel_bar.add_widget(self.fuel_image)
         self.add_widget(self.fuel_bar)
+        self.fuel_bar.height = 0
 
         # CAR DOORS
         self.car = Car(pos=(257, 84))
@@ -285,7 +282,7 @@ class Car(Scatter):
 
         self.bind(doors_states=self._update)
 
-    def _update(self):
+    def _update(self, *args):
         driver_door_states = self.doors_states & 1
         passenger_door_states = self.doors_states & 4
         left_door_states = self.doors_states & 16
@@ -395,143 +392,42 @@ class RequestsLoop(Thread):
         self.start()
 
     canCommands = [
-        can.Message(
-            arbitration_id=0x714,
-            data=[
-                0x03,
-                0x22,
-                message_commands['GET_DOORS_COMMAND'] >> 8,
-                message_commands['GET_DOORS_COMMAND'] & 0xff,
-                0x55, 0x55, 0x55, 0x55
-            ],
-            extended_id=False
-        ),
-        can.Message(
-            arbitration_id=0x714,
-            data=[
-                0x03, 0x22,
-                message_commands['GET_SPEED'] >> 8,
-                message_commands['GET_SPEED'] & 0xff,
-                0x55, 0x55, 0x55, 0x55
-            ],
-            extended_id=False
-        ),
-        can.Message(
-            arbitration_id=0x714,
-            data=[
-                0x03,
-                0x22,
-                message_commands['GET_KM_LEFT'] >> 8,
-                message_commands['GET_KM_LEFT'] & 0xff,
-                0x55, 0x55, 0x55, 0x55
-            ],
-            extended_id=False
-        ),
-        can.Message(
-            arbitration_id=0x714,
-            data=[
-                0x03,
-                0x22,
-                message_commands['GET_RPM'] >> 8,
-                message_commands['GET_RPM'] & 0xff,
-                0x55, 0x55, 0x55, 0x55
-            ],
-            extended_id=False
-        ),
-        can.Message(
-            arbitration_id=0x714,
-            data=[
-                0x03, 0x22,
-                message_commands['GET_OIL_TEMPERATURE'] >> 8,
-                message_commands['GET_OIL_TEMPERATURE'] & 0xff,
-                0x55, 0x55, 0x55, 0x55
-            ],
-            extended_id=False
-        ),
-        can.Message(
-            arbitration_id=0x714,
-            data=[
-                0x03,
-                0x22,
-                message_commands['GET_FUEL_LEFT'] >> 8,
-                message_commands['GET_FUEL_LEFT'] & 0xff,
-                0x55, 0x55, 0x55, 0x55
-            ],
-            extended_id=False
-        ),
-        can.Message(
-            arbitration_id=0x714,
-            data=[
-                0x03,
-                0x22,
-                message_commands['GET_OUTDOOR_TEMPERATURE'] >> 8,
-                message_commands['GET_OUTDOOR_TEMPERATURE'] & 0xff,
-                0x55, 0x55, 0x55, 0x55
-            ],
-            extended_id=False
-        ),
-        can.Message(
-            arbitration_id=0x746,
-            data=[
-                0x03,
-                0x22,
-                message_commands['GET_INDOOR_TEMPERATURE'] >> 8,
-                message_commands['GET_INDOOR_TEMPERATURE'] & 0xff,
-                0x55, 0x55, 0x55, 0x55
-            ],
-            extended_id=False
-        ),
-        can.Message(
-            arbitration_id=0x714,
-            data=[
-                0x03,
-                0x22,
-                message_commands['GET_COOLANT_TEMPERATURE'] >> 8,
-                message_commands['GET_COOLANT_TEMPERATURE'] & 0xff,
-                0x55, 0x55, 0x55, 0x55
-            ],
-            extended_id=False
-        ),
-        can.Message(
-            arbitration_id=0x714,
-            data=[
-                0x03,
-                0x22,
-                message_commands['GET_TIME'] >> 8,
-                message_commands['GET_TIME'] & 0xff,
-                0x55, 0x55, 0x55, 0x55
-            ],
-            extended_id=False
-        ),
-        can.Message(
-            arbitration_id=0x714,
-            data=[
-                0x03,
-                0x22,
-                message_commands['GET_DISTANCE'] >> 8,
-                message_commands['GET_DISTANCE'] & 0xff,
-                0x55, 0x55, 0x55, 0x55
-            ],
-            extended_id=False
-        ),
-        can.Message(
-            arbitration_id=0x714,
-            data=[
-                0x03,
-                0x22,
-                message_commands['GET_FUEL_CONSUMPTION'] >> 8,
-                message_commands['GET_FUEL_CONSUMPTION'] & 0xff,
-                0x55, 0x55, 0x55, 0x55
-            ],
-            extended_id=False
-        )
+        can.Message(arbitration_id=0x714,data=[0x03,0x22,message_commands['GET_RPM'] >> 8,message_commands['GET_RPM'] & 0xff, 0x55, 0x55, 0x55, 0x55],extended_id=False),
+        can.Message(arbitration_id=0x714,data=[0x03,0x22,message_commands['GET_SPEED'] >> 8,message_commands['GET_SPEED'] & 0xff, 0x55, 0x55, 0x55, 0x55],extended_id=False),
+        can.Message(arbitration_id=0x714,data=[0x03,0x22,message_commands['GET_DOORS_COMMAND'] >> 8,message_commands['GET_DOORS_COMMAND'] & 0xff, 0x55, 0x55, 0x55, 0x55],extended_id=False),
+        can.Message(arbitration_id=0x714,data=[0x03,0x22,message_commands['GET_KM_LEFT'] >> 8,message_commands['GET_KM_LEFT'] & 0xff, 0x55, 0x55, 0x55, 0x55],extended_id=False),
+        can.Message(arbitration_id=0x714,data=[0x03,0x22,message_commands['GET_OIL_TEMPERATURE'] >> 8,message_commands['GET_OIL_TEMPERATURE'] & 0xff, 0x55, 0x55, 0x55, 0x55],extended_id=False),
+        can.Message(arbitration_id=0x714,data=[0x03,0x22,message_commands['GET_FUEL_LEFT'] >> 8,message_commands['GET_FUEL_LEFT'] & 0xff, 0x55, 0x55, 0x55, 0x55],extended_id=False),
+        can.Message(arbitration_id=0x714,data=[0x03,0x22,message_commands['GET_OUTDOOR_TEMPERATURE'] >> 8,message_commands['GET_OUTDOOR_TEMPERATURE'] & 0xff, 0x55, 0x55, 0x55, 0x55],extended_id=False),
+        can.Message(arbitration_id=0x746,data=[0x03,0x22,message_commands['GET_INDOOR_TEMPERATURE'] >> 8,message_commands['GET_INDOOR_TEMPERATURE'] & 0xff, 0x55, 0x55, 0x55, 0x55],extended_id=False),
+        can.Message(arbitration_id=0x714,data=[0x03,0x22,message_commands['GET_COOLANT_TEMPERATURE'] >> 8,message_commands['GET_COOLANT_TEMPERATURE'] & 0xff, 0x55, 0x55, 0x55, 0x55],extended_id=False),
+        can.Message(arbitration_id=0x714,data=[0x03,0x22,message_commands['GET_TIME'] >> 8,message_commands['GET_TIME'] & 0xff, 0x55, 0x55, 0x55, 0x55],extended_id=False),
+        can.Message(arbitration_id=0x714,data=[0x03,0x22,message_commands['GET_DISTANCE'] >> 8,message_commands['GET_DISTANCE'] & 0xff, 0x55, 0x55, 0x55, 0x55],extended_id=False),
+        can.Message(arbitration_id=0x714,data=[0x03,0x22,message_commands['GET_FUEL_CONSUMPTION'] >> 8,message_commands['GET_FUEL_CONSUMPTION'] & 0xff, 0x55, 0x55, 0x55, 0x55],extended_id=False)
      ]
 
     def run(self):
+        # poll RPM every 0.01 sec and poll other sensors for every 10 rpm requests (0.1 sec)
+        message_number = 0
+        rpm_pool_counter = 0
         while True:
-            for command in self.canCommands:
-                bus.send(command)
-                time.sleep(0.01)
+            if (rpm_pool_counter >= 10):
+                if (message_number == len(self.canCommands)):
+                    message_number = 0
+                try:
+                    bus.send(self.canCommands[message_number])
+                except:
+                    pass
+                message_number = message_number + 1
+                rpm_pool_counter = 0
+
+            else:
+                try:
+                    bus.send(self.canCommands[0])
+                except:
+                    pass
+                rpm_pool_counter = rpm_pool_counter + 1
+            time.sleep(0.01)
 
 
 class BoxApp(App):
